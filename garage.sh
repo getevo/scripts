@@ -11,7 +11,7 @@
 #   GARAGE_RPC_PORT  - RPC port (default: 3901)
 #   GARAGE_WEB_PORT  - Web port (default: 3902)
 #   DATA_DIR         - Data directory (default: /data/garage)
-#   GARAGE_VERSION   - Image version (default: v1.0.1)
+#   GARAGE_VERSION   - Image version (default: v2.1.0)
 #
 set -euo pipefail
 trap 'echo "ERROR: Script failed at line $LINENO. Command: $BASH_COMMAND" >&2; exit 1' ERR
@@ -19,7 +19,7 @@ trap 'echo "ERROR: Script failed at line $LINENO. Command: $BASH_COMMAND" >&2; e
 # ---------- Configuration ----------
 CONTAINER_NAME="garage"
 DEFAULT_DATA_DIR="/data/garage"
-GARAGE_VERSION="${GARAGE_VERSION:-v1.0.1}"
+GARAGE_VERSION="${GARAGE_VERSION:-v2.1.0}"
 
 # ---------- Helpers ----------
 log() { echo -e "\n==> $*"; }
