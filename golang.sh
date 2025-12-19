@@ -19,6 +19,11 @@ TARGET_HOME="$(eval echo "~${TARGET_USER}")"
 
 log "Target user: ${TARGET_USER} (${TARGET_HOME})"
 
+# ---------- install gcc for CGO ----------
+log "Installing gcc (build-essential)..."
+apt-get update -y
+apt-get install -y --no-install-recommends build-essential
+
 # ---------- detect architecture ----------
 ARCH=$(uname -m)
 case "${ARCH}" in
@@ -73,13 +78,14 @@ ENV_BLOCK='
 # Go environment variables
 export GOROOT=/usr/local/go
 export GOPATH=$HOME/go
-export PATH=$PATH:$GOROOT/bin:$GOPATH/bin'
+export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
+export CGO_ENABLED=1'
 
 # Remove old Go environment config if exists
 for FILE in "${BASHRC}" "${PROFILE}"; do
   if [[ -f "${FILE}" ]]; then
     # Remove existing Go config block
-    sed -i '/# Go environment variables/,/export PATH=.*GOPATH\/bin/d' "${FILE}"
+    sed -i '/# Go environment variables/,/export CGO_ENABLED/d' "${FILE}"
   fi
 done
 
@@ -127,5 +133,6 @@ echo "Notes:"
 echo " - Run 'source ~/.bashrc' or log out and back in to apply changes"
 echo " - GOROOT: /usr/local/go"
 echo " - GOPATH: ${GOPATH_DIR}"
+echo " - CGO_ENABLED: 1"
 echo " - Verify with: go version"
 echo ""

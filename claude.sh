@@ -99,6 +99,15 @@ chown "${TARGET_USER}:${TARGET_USER}" "${SCREENRC}"
 log "Adding TERM=xterm-256color and 'cl' alias to ~/.bashrc..."
 BASHRC="${TARGET_HOME}/.bashrc"
 
+# Add ~/.local/bin to PATH if not present (where Claude Code installs)
+if [[ -f "${BASHRC}" ]] && ! grep -q 'export PATH="\$HOME/.local/bin:\$PATH"' "${BASHRC}"; then
+  cat >> "${BASHRC}" <<'EOF'
+
+# Add ~/.local/bin to PATH (Claude Code location)
+export PATH="$HOME/.local/bin:$PATH"
+EOF
+fi
+
 # Add TERM setup if not present
 if [[ -f "${BASHRC}" ]] && ! grep -q "SCREEN_UTF8_256_SETUP" "${BASHRC}"; then
   cat >> "${BASHRC}" <<'EOF'
