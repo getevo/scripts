@@ -1,28 +1,98 @@
 #!/usr/bin/env bash
+#
+# garage.sh - Install Garage S3-compatible storage in Docker
+#
+# Usage:
+#   sudo ./garage.sh                     # Interactive mode
+#   sudo ./garage.sh --uninstall         # Remove container and optionally data
+#
+# Environment Variables:
+#   GARAGE_S3_PORT   - S3 API port (default: 3900)
+#   GARAGE_RPC_PORT  - RPC port (default: 3901)
+#   GARAGE_WEB_PORT  - Web port (default: 3902)
+#   DATA_DIR         - Data directory (default: /data/garage)
+#   GARAGE_VERSION   - Image version (default: v1.0.1)
+#
 set -euo pipefail
+trap 'echo "ERROR: Script failed at line $LINENO. Command: $BASH_COMMAND" >&2; exit 1' ERR
 
-# ---------- helpers ----------
+# ---------- Configuration ----------
+CONTAINER_NAME="garage"
+DEFAULT_DATA_DIR="/data/garage"
+GARAGE_VERSION="${GARAGE_VERSION:-v1.0.1}"
+
+# ---------- Helpers ----------
 log() { echo -e "\n==> $*"; }
 need_cmd() { command -v "$1" >/dev/null 2>&1; }
 
+wait_for_port() {
+  local port="$1"
+  local max_attempts="${2:-30}"
+  local attempt=1
+  while [[ $attempt -le $max_attempts ]]; do
+    if timeout 1 bash -c "echo >/dev/tcp/localhost/${port}" 2>/dev/null; then
+      return 0
+    fi
+    sleep 2
+    ((attempt++))
+  done
+  return 1
+}
+
+# Detect architecture for correct image
+get_garage_image() {
+  local arch
+  arch=$(uname -m)
+  case "${arch}" in
+    x86_64|amd64)
+      echo "dxflrs/garage:${GARAGE_VERSION}"
+      ;;
+    aarch64|arm64)
+      echo "dxflrs/garage:${GARAGE_VERSION}"
+      ;;
+    *)
+      echo "dxflrs/garage:${GARAGE_VERSION}"
+      ;;
+  esac
+}
+
+# ---------- Root check ----------
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Please run as root: sudo $0"
   exit 1
 fi
 
-CONTAINER_NAME="garage"
-DEFAULT_DATA_DIR="/data/garage"
+# ---------- Uninstall mode ----------
+if [[ "${1:-}" == "--uninstall" ]]; then
+  log "Uninstalling Garage..."
+  docker stop "${CONTAINER_NAME}" 2>/dev/null || true
+  docker rm "${CONTAINER_NAME}" 2>/dev/null || true
+  if [[ -d "${DEFAULT_DATA_DIR}" ]]; then
+    read -p "Remove data directory ${DEFAULT_DATA_DIR}? [y/N]: " REMOVE_DATA
+    if [[ "${REMOVE_DATA}" =~ ^[Yy]$ ]]; then
+      rm -rf "${DEFAULT_DATA_DIR}"
+      log "Data directory removed"
+    fi
+  fi
+  read -p "Remove config /etc/garage? [y/N]: " REMOVE_CONFIG
+  if [[ "${REMOVE_CONFIG}" =~ ^[Yy]$ ]]; then
+    rm -rf /etc/garage
+    log "Config removed"
+  fi
+  log "Garage uninstalled"
+  exit 0
+fi
 
-# ---------- check docker ----------
+# ---------- Docker check ----------
 if ! need_cmd docker; then
   echo "ERROR: Docker is not installed. Run docker.sh first."
   exit 1
 fi
 
-# ---------- prompt for settings ----------
+# ---------- Prompt for configuration ----------
 echo ""
-echo "Garage S3 Setup (Rust-based)"
-echo "============================"
+echo "Garage S3 Setup"
+echo "==============="
 echo ""
 
 if [[ -z "${GARAGE_S3_PORT:-}" ]]; then
@@ -30,14 +100,14 @@ if [[ -z "${GARAGE_S3_PORT:-}" ]]; then
   GARAGE_S3_PORT="${GARAGE_S3_PORT:-3900}"
 fi
 
-if [[ -z "${GARAGE_WEB_PORT:-}" ]]; then
-  read -p "Web/Admin port [3902]: " GARAGE_WEB_PORT
-  GARAGE_WEB_PORT="${GARAGE_WEB_PORT:-3902}"
-fi
-
 if [[ -z "${GARAGE_RPC_PORT:-}" ]]; then
   read -p "RPC port [3901]: " GARAGE_RPC_PORT
   GARAGE_RPC_PORT="${GARAGE_RPC_PORT:-3901}"
+fi
+
+if [[ -z "${GARAGE_WEB_PORT:-}" ]]; then
+  read -p "Web/Admin port [3902]: " GARAGE_WEB_PORT
+  GARAGE_WEB_PORT="${GARAGE_WEB_PORT:-3902}"
 fi
 
 if [[ -z "${DATA_DIR:-}" ]]; then
@@ -50,19 +120,20 @@ fi
 # Generate random secret for RPC
 RPC_SECRET=$(openssl rand -hex 32)
 
-# ---------- remove existing container ----------
+# ---------- Remove existing container ----------
 if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
   log "Removing existing Garage container..."
-  docker stop "${CONTAINER_NAME}" || true
-  docker rm "${CONTAINER_NAME}" || true
+  docker stop "${CONTAINER_NAME}" 2>/dev/null || true
+  docker rm "${CONTAINER_NAME}" 2>/dev/null || true
 fi
 
-# ---------- create directories ----------
+# ---------- Create directories ----------
 log "Creating data directory: ${DATA_DIR}"
-mkdir -p "${DATA_DIR}"
+mkdir -p "${DATA_DIR}/meta"
+mkdir -p "${DATA_DIR}/blocks"
 mkdir -p /etc/garage
 
-# ---------- create garage config ----------
+# ---------- Create Garage config ----------
 log "Creating Garage configuration..."
 cat > /etc/garage/garage.toml <<EOF
 metadata_dir = "/data/meta"
@@ -88,72 +159,79 @@ root_domain = ".web.garage.localhost"
 api_bind_addr = "[::]:3903"
 EOF
 
-# ---------- run garage container ----------
-log "Starting Garage container..."
+# ---------- Get correct image ----------
+GARAGE_IMAGE=$(get_garage_image)
+log "Using image: ${GARAGE_IMAGE}"
+
+# ---------- Run container ----------
+log "Starting Garage ${GARAGE_VERSION}..."
 docker run -d \
   --name "${CONTAINER_NAME}" \
-  --restart=always \
+  --restart=unless-stopped \
   -p "${GARAGE_S3_PORT}:3900" \
   -p "${GARAGE_RPC_PORT}:3901" \
   -p "${GARAGE_WEB_PORT}:3902" \
   -p 3903:3903 \
   -v "${DATA_DIR}:/data" \
   -v /etc/garage/garage.toml:/etc/garage.toml \
-  dxflrs/garage:latest
+  "${GARAGE_IMAGE}"
 
-# ---------- wait for garage to start ----------
-log "Waiting for Garage to start..."
-sleep 5
+# ---------- Wait for Garage to start ----------
+log "Waiting for Garage to be ready..."
+if ! wait_for_port "${GARAGE_S3_PORT}" 30; then
+  echo "ERROR: Garage failed to start"
+  docker logs "${CONTAINER_NAME}" 2>&1 | tail -20
+  exit 1
+fi
 
-# ---------- get node id and configure ----------
+# Give it a moment to fully initialize
+sleep 3
+
+# ---------- Configure node ----------
 log "Configuring Garage node..."
 NODE_ID=$(docker exec "${CONTAINER_NAME}" garage node id 2>/dev/null | head -1 | cut -d'@' -f1 || echo "")
 
 if [[ -n "${NODE_ID}" ]]; then
-  # Configure the node with all capacity
   docker exec "${CONTAINER_NAME}" garage layout assign -z dc1 -c 1G "${NODE_ID}" 2>/dev/null || true
   docker exec "${CONTAINER_NAME}" garage layout apply --version 1 2>/dev/null || true
 fi
 
-# ---------- create default key ----------
+# ---------- Create default key ----------
 log "Creating default API key..."
 KEY_OUTPUT=$(docker exec "${CONTAINER_NAME}" garage key create default-key 2>/dev/null || echo "")
-ACCESS_KEY=$(echo "${KEY_OUTPUT}" | grep -oP 'Key ID: \K[A-Z0-9]+' || echo "check-manually")
-SECRET_KEY=$(echo "${KEY_OUTPUT}" | grep -oP 'Secret key: \K[a-f0-9]+' || echo "check-manually")
+ACCESS_KEY=$(echo "${KEY_OUTPUT}" | grep -oP 'Key ID: \K[A-Z0-9]+' 2>/dev/null || echo "run: docker exec garage garage key list")
+SECRET_KEY=$(echo "${KEY_OUTPUT}" | grep -oP 'Secret key: \K[a-f0-9]+' 2>/dev/null || echo "run: docker exec garage garage key info default-key")
 
-# ---------- get server ip ----------
+# ---------- Get server IP ----------
 SERVER_IP=$(hostname -I | awk '{print $1}')
 
-# ---------- verify ----------
-if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-  log "Done."
-  echo ""
-  echo "=========================================="
-  echo "  Garage Installation Complete!"
-  echo "=========================================="
-  echo ""
-  echo "Container: ${CONTAINER_NAME}"
-  echo "S3 API port: ${GARAGE_S3_PORT}"
-  echo "RPC port: ${GARAGE_RPC_PORT}"
-  echo "Web port: ${GARAGE_WEB_PORT}"
-  echo "Admin port: 3903"
-  echo "Data directory: ${DATA_DIR}"
-  echo ""
-  echo "Default API Key:"
-  echo "  Access Key: ${ACCESS_KEY}"
-  echo "  Secret Key: ${SECRET_KEY}"
-  echo ""
-  echo "S3 Endpoint:"
-  echo "  http://${SERVER_IP}:${GARAGE_S3_PORT}"
-  echo ""
-  echo "Next steps:"
-  echo "  1. Create bucket: docker exec ${CONTAINER_NAME} garage bucket create mybucket"
-  echo "  2. Allow key: docker exec ${CONTAINER_NAME} garage bucket allow --read --write mybucket --key default-key"
-  echo ""
-  echo "Config: /etc/garage/garage.toml"
-  echo ""
-else
-  echo "ERROR: Garage container failed to start"
-  docker logs "${CONTAINER_NAME}"
-  exit 1
-fi
+log "Done."
+echo ""
+echo "=========================================="
+echo "  Garage Installation Complete!"
+echo "=========================================="
+echo ""
+echo "Container: ${CONTAINER_NAME}"
+echo "Version: ${GARAGE_VERSION}"
+echo "S3 API port: ${GARAGE_S3_PORT}"
+echo "RPC port: ${GARAGE_RPC_PORT}"
+echo "Web port: ${GARAGE_WEB_PORT}"
+echo "Admin port: 3903"
+echo "Data: ${DATA_DIR}"
+echo ""
+echo "Default API Key:"
+echo "  Access Key: ${ACCESS_KEY}"
+echo "  Secret Key: ${SECRET_KEY}"
+echo ""
+echo "S3 Endpoint:"
+echo "  http://${SERVER_IP}:${GARAGE_S3_PORT}"
+echo ""
+echo "Next steps:"
+echo "  1. Create bucket: docker exec ${CONTAINER_NAME} garage bucket create mybucket"
+echo "  2. Allow key: docker exec ${CONTAINER_NAME} garage bucket allow --read --write mybucket --key default-key"
+echo ""
+echo "Config: /etc/garage/garage.toml"
+echo ""
+echo "Uninstall:"
+echo "  sudo ./garage.sh --uninstall"
+echo ""
