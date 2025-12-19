@@ -39,6 +39,23 @@ wait_for_port() {
   return 1
 }
 
+wait_for_garage() {
+  local max_attempts="${1:-30}"
+  local attempt=1
+  echo -n "Waiting for Garage CLI to be ready"
+  while [[ $attempt -le $max_attempts ]]; do
+    if docker exec "${CONTAINER_NAME}" garage node id &>/dev/null; then
+      echo " OK"
+      return 0
+    fi
+    echo -n "."
+    sleep 2
+    ((attempt++))
+  done
+  echo " TIMEOUT"
+  return 1
+}
+
 # Detect architecture for correct image
 get_garage_image() {
   local arch
@@ -183,23 +200,68 @@ if ! wait_for_port "${GARAGE_S3_PORT}" 30; then
   exit 1
 fi
 
-# Give it a moment to fully initialize
-sleep 3
-
-# ---------- Configure node ----------
-log "Configuring Garage node..."
-NODE_ID=$(docker exec "${CONTAINER_NAME}" garage node id 2>/dev/null | head -1 | cut -d'@' -f1 || echo "")
-
-if [[ -n "${NODE_ID}" ]]; then
-  docker exec "${CONTAINER_NAME}" garage layout assign -z dc1 -c 1G "${NODE_ID}" 2>/dev/null || true
-  docker exec "${CONTAINER_NAME}" garage layout apply --version 1 2>/dev/null || true
+# Wait for Garage CLI to be responsive
+if ! wait_for_garage 30; then
+  echo "ERROR: Garage CLI not responding"
+  docker logs "${CONTAINER_NAME}" 2>&1 | tail -20
+  exit 1
 fi
+
+# ---------- Configure cluster layout ----------
+log "Configuring Garage cluster layout..."
+NODE_ID=$(docker exec "${CONTAINER_NAME}" garage node id 2>/dev/null | head -1 | cut -d'@' -f1)
+
+if [[ -z "${NODE_ID}" ]]; then
+  echo "ERROR: Could not get node ID"
+  docker logs "${CONTAINER_NAME}" 2>&1 | tail -20
+  exit 1
+fi
+
+echo "Node ID: ${NODE_ID}"
+
+# Assign node to layout
+if ! docker exec "${CONTAINER_NAME}" garage layout assign -z dc1 -c 1G "${NODE_ID}"; then
+  echo "ERROR: Failed to assign node to layout"
+  exit 1
+fi
+
+# Apply layout (get current version and increment)
+LAYOUT_VERSION=$(docker exec "${CONTAINER_NAME}" garage layout show 2>/dev/null | grep -oP 'version \K[0-9]+' | head -1 || echo "0")
+NEXT_VERSION=$((LAYOUT_VERSION + 1))
+
+if ! docker exec "${CONTAINER_NAME}" garage layout apply --version "${NEXT_VERSION}"; then
+  echo "ERROR: Failed to apply layout"
+  exit 1
+fi
+
+log "Cluster layout configured successfully"
+
+# Wait for layout to be ready
+sleep 2
 
 # ---------- Create default key ----------
 log "Creating default API key..."
-KEY_OUTPUT=$(docker exec "${CONTAINER_NAME}" garage key create default-key 2>/dev/null || echo "")
-ACCESS_KEY=$(echo "${KEY_OUTPUT}" | grep -oP 'Key ID: \K[A-Z0-9]+' 2>/dev/null || echo "run: docker exec garage garage key list")
-SECRET_KEY=$(echo "${KEY_OUTPUT}" | grep -oP 'Secret key: \K[a-f0-9]+' 2>/dev/null || echo "run: docker exec garage garage key info default-key")
+KEY_OUTPUT=$(docker exec "${CONTAINER_NAME}" garage key create default-key 2>&1 || echo "")
+
+# Check if key already exists
+if echo "${KEY_OUTPUT}" | grep -q "already exists"; then
+  KEY_OUTPUT=$(docker exec "${CONTAINER_NAME}" garage key info default-key 2>/dev/null || echo "")
+fi
+
+ACCESS_KEY=$(echo "${KEY_OUTPUT}" | grep -oP 'Key ID: \K[A-Z0-9]+' 2>/dev/null || echo "")
+SECRET_KEY=$(echo "${KEY_OUTPUT}" | grep -oP 'Secret key: \K[a-f0-9]+' 2>/dev/null || echo "")
+
+if [[ -z "${ACCESS_KEY}" ]]; then
+  ACCESS_KEY="run: docker exec garage garage key list"
+fi
+if [[ -z "${SECRET_KEY}" ]]; then
+  SECRET_KEY="run: docker exec garage garage key info default-key"
+fi
+
+# ---------- Create default bucket ----------
+log "Creating default bucket..."
+docker exec "${CONTAINER_NAME}" garage bucket create default-bucket 2>/dev/null || true
+docker exec "${CONTAINER_NAME}" garage bucket allow --read --write --owner default-bucket --key default-key 2>/dev/null || true
 
 # ---------- Get server IP ----------
 SERVER_IP=$(hostname -I | awk '{print $1}')
@@ -225,9 +287,14 @@ echo ""
 echo "S3 Endpoint:"
 echo "  http://${SERVER_IP}:${GARAGE_S3_PORT}"
 echo ""
-echo "Next steps:"
-echo "  1. Create bucket: docker exec ${CONTAINER_NAME} garage bucket create mybucket"
-echo "  2. Allow key: docker exec ${CONTAINER_NAME} garage bucket allow --read --write mybucket --key default-key"
+echo "Default Bucket: default-bucket"
+echo ""
+echo "AWS CLI example:"
+echo "  aws --endpoint-url http://${SERVER_IP}:${GARAGE_S3_PORT} s3 ls s3://default-bucket/"
+echo ""
+echo "Create more buckets:"
+echo "  docker exec ${CONTAINER_NAME} garage bucket create mybucket"
+echo "  docker exec ${CONTAINER_NAME} garage bucket allow --read --write --owner mybucket --key default-key"
 echo ""
 echo "Config: /etc/garage/garage.toml"
 echo ""
