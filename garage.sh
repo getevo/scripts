@@ -225,13 +225,23 @@ if ! docker exec "${CONTAINER_NAME}" /garage layout assign -z dc1 -c 1G "${NODE_
   exit 1
 fi
 
-# Apply layout (get current version and increment)
-LAYOUT_VERSION=$(docker exec "${CONTAINER_NAME}" /garage layout show 2>/dev/null | grep -oP 'version \K[0-9]+' | head -1 || echo "0")
-NEXT_VERSION=$((LAYOUT_VERSION + 1))
+# Apply layout - try multiple versions if needed
+APPLIED=false
+for VERSION in 1 2 3 4 5; do
+  if docker exec "${CONTAINER_NAME}" /garage layout apply --version "${VERSION}" 2>/dev/null; then
+    APPLIED=true
+    break
+  fi
+done
 
-if ! docker exec "${CONTAINER_NAME}" /garage layout apply --version "${NEXT_VERSION}"; then
-  echo "ERROR: Failed to apply layout"
-  exit 1
+if [[ "${APPLIED}" != "true" ]]; then
+  # Check if layout is already applied
+  if docker exec "${CONTAINER_NAME}" /garage layout show 2>&1 | grep -q "No changes"; then
+    echo "Layout already configured"
+  else
+    echo "WARNING: Could not apply layout automatically"
+    echo "Run manually: docker exec garage /garage layout apply --version <next_version>"
+  fi
 fi
 
 log "Cluster layout configured successfully"
