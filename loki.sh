@@ -11,13 +11,32 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 CONTAINER_NAME="loki"
-DATA_DIR="/data/loki"
-LOKI_PORT="${LOKI_PORT:-3100}"
+DEFAULT_DATA_DIR="/data/loki"
 
 # ---------- check docker ----------
 if ! need_cmd docker; then
   echo "ERROR: Docker is not installed. Run docker.sh first."
   exit 1
+fi
+
+# ---------- prompt for settings ----------
+echo ""
+echo "Loki Setup"
+echo "=========="
+echo ""
+
+if [[ -z "${LOKI_PORT:-}" ]]; then
+  read -p "Port [3100]: " LOKI_PORT_INPUT
+  LOKI_PORT="${LOKI_PORT_INPUT:-3100}"
+else
+  LOKI_PORT="${LOKI_PORT:-3100}"
+fi
+
+if [[ -z "${DATA_DIR:-}" ]]; then
+  read -p "Data directory [${DEFAULT_DATA_DIR}]: " DATA_DIR_INPUT
+  DATA_DIR="${DATA_DIR_INPUT:-${DEFAULT_DATA_DIR}}"
+else
+  DATA_DIR="${DATA_DIR:-${DEFAULT_DATA_DIR}}"
 fi
 
 # ---------- remove existing container ----------

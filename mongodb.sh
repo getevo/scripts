@@ -11,7 +11,7 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 CONTAINER_NAME="mongodb"
-DATA_DIR="/data/mongodb"
+DEFAULT_DATA_DIR="/data/mongodb"
 MONGO_PORT="${MONGO_PORT:-27017}"
 
 # ---------- prompt for credentials ----------
@@ -41,6 +41,18 @@ if [[ -z "${MONGO_ROOT_PASSWORD:-}" ]]; then
       fi
     fi
   done
+fi
+
+if [[ -z "${MONGO_PORT:-}" ]] || [[ "${MONGO_PORT}" == "27017" ]]; then
+  read -p "Port [27017]: " MONGO_PORT_INPUT
+  MONGO_PORT="${MONGO_PORT_INPUT:-27017}"
+fi
+
+if [[ -z "${DATA_DIR:-}" ]]; then
+  read -p "Data directory [${DEFAULT_DATA_DIR}]: " DATA_DIR_INPUT
+  DATA_DIR="${DATA_DIR_INPUT:-${DEFAULT_DATA_DIR}}"
+else
+  DATA_DIR="${DATA_DIR:-${DEFAULT_DATA_DIR}}"
 fi
 
 # ---------- check docker ----------

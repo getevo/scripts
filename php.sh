@@ -9,6 +9,27 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
+# Default PHP version
+DEFAULT_VERSION="8.3"
+
+# ---------- get version ----------
+PHP_VERSION="${1:-}"
+
+if [[ -z "${PHP_VERSION}" ]]; then
+  echo ""
+  echo "Available versions: 7.4, 8.0, 8.1, 8.2, 8.3, 8.4"
+  read -p "Enter PHP version [${DEFAULT_VERSION}]: " PHP_VERSION
+  PHP_VERSION="${PHP_VERSION:-${DEFAULT_VERSION}}"
+fi
+
+# Validate version format
+if ! [[ "${PHP_VERSION}" =~ ^[0-9]+\.[0-9]+$ ]]; then
+  echo "ERROR: Version must be in format X.Y (e.g., 8.3)"
+  exit 1
+fi
+
+log "Installing PHP version: ${PHP_VERSION}"
+
 # ---------- add ondrej php repository ----------
 log "Adding PHP repository..."
 apt-get update -y
@@ -16,24 +37,24 @@ apt-get install -y --no-install-recommends software-properties-common
 add-apt-repository -y ppa:ondrej/php
 
 # ---------- install php ----------
-log "Installing PHP 8.3 with common extensions..."
+log "Installing PHP ${PHP_VERSION} with common extensions..."
 apt-get update -y
 apt-get install -y --no-install-recommends \
-  php8.3 \
-  php8.3-cli \
-  php8.3-common \
-  php8.3-curl \
-  php8.3-mbstring \
-  php8.3-mysql \
-  php8.3-pgsql \
-  php8.3-xml \
-  php8.3-zip \
-  php8.3-gd \
-  php8.3-bcmath \
-  php8.3-intl \
-  php8.3-readline \
-  php8.3-opcache \
-  php8.3-fpm
+  php${PHP_VERSION} \
+  php${PHP_VERSION}-cli \
+  php${PHP_VERSION}-common \
+  php${PHP_VERSION}-curl \
+  php${PHP_VERSION}-mbstring \
+  php${PHP_VERSION}-mysql \
+  php${PHP_VERSION}-pgsql \
+  php${PHP_VERSION}-xml \
+  php${PHP_VERSION}-zip \
+  php${PHP_VERSION}-gd \
+  php${PHP_VERSION}-bcmath \
+  php${PHP_VERSION}-intl \
+  php${PHP_VERSION}-readline \
+  php${PHP_VERSION}-opcache \
+  php${PHP_VERSION}-fpm
 
 # ---------- install composer ----------
 log "Installing Composer..."

@@ -11,16 +11,56 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 CONTAINER_NAME="rabbitmq"
-DATA_DIR="/data/rabbitmq"
-RABBITMQ_PORT="${RABBITMQ_PORT:-5672}"
-RABBITMQ_MGMT_PORT="${RABBITMQ_MGMT_PORT:-15672}"
-RABBITMQ_USER="${RABBITMQ_USER:-admin}"
-RABBITMQ_PASSWORD="${RABBITMQ_PASSWORD:-$(openssl rand -base64 16)}"
+DEFAULT_DATA_DIR="/data/rabbitmq"
 
 # ---------- check docker ----------
 if ! need_cmd docker; then
   echo "ERROR: Docker is not installed. Run docker.sh first."
   exit 1
+fi
+
+# ---------- prompt for settings ----------
+echo ""
+echo "RabbitMQ Setup"
+echo "=============="
+echo ""
+
+if [[ -z "${RABBITMQ_USER:-}" ]]; then
+  read -p "Username [admin]: " RABBITMQ_USER
+  RABBITMQ_USER="${RABBITMQ_USER:-admin}"
+fi
+
+if [[ -z "${RABBITMQ_PASSWORD:-}" ]]; then
+  while true; do
+    read -s -p "Password: " RABBITMQ_PASSWORD
+    echo ""
+    if [[ -z "${RABBITMQ_PASSWORD}" ]]; then
+      echo "Password cannot be empty. Please try again."
+    else
+      break
+    fi
+  done
+fi
+
+if [[ -z "${RABBITMQ_PORT:-}" ]]; then
+  read -p "AMQP port [5672]: " RABBITMQ_PORT_INPUT
+  RABBITMQ_PORT="${RABBITMQ_PORT_INPUT:-5672}"
+else
+  RABBITMQ_PORT="${RABBITMQ_PORT:-5672}"
+fi
+
+if [[ -z "${RABBITMQ_MGMT_PORT:-}" ]]; then
+  read -p "Management port [15672]: " RABBITMQ_MGMT_PORT_INPUT
+  RABBITMQ_MGMT_PORT="${RABBITMQ_MGMT_PORT_INPUT:-15672}"
+else
+  RABBITMQ_MGMT_PORT="${RABBITMQ_MGMT_PORT:-15672}"
+fi
+
+if [[ -z "${DATA_DIR:-}" ]]; then
+  read -p "Data directory [${DEFAULT_DATA_DIR}]: " DATA_DIR_INPUT
+  DATA_DIR="${DATA_DIR_INPUT:-${DEFAULT_DATA_DIR}}"
+else
+  DATA_DIR="${DATA_DIR:-${DEFAULT_DATA_DIR}}"
 fi
 
 # ---------- remove existing container ----------

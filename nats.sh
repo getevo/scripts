@@ -11,15 +11,46 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 CONTAINER_NAME="nats"
-DATA_DIR="/data/nats"
-NATS_PORT="${NATS_PORT:-4222}"
-NATS_HTTP_PORT="${NATS_HTTP_PORT:-8222}"
-NATS_CLUSTER_PORT="${NATS_CLUSTER_PORT:-6222}"
+DEFAULT_DATA_DIR="/data/nats"
 
 # ---------- check docker ----------
 if ! need_cmd docker; then
   echo "ERROR: Docker is not installed. Run docker.sh first."
   exit 1
+fi
+
+# ---------- prompt for settings ----------
+echo ""
+echo "NATS Setup"
+echo "=========="
+echo ""
+
+if [[ -z "${NATS_PORT:-}" ]]; then
+  read -p "Client port [4222]: " NATS_PORT_INPUT
+  NATS_PORT="${NATS_PORT_INPUT:-4222}"
+else
+  NATS_PORT="${NATS_PORT:-4222}"
+fi
+
+if [[ -z "${NATS_HTTP_PORT:-}" ]]; then
+  read -p "HTTP monitoring port [8222]: " NATS_HTTP_PORT_INPUT
+  NATS_HTTP_PORT="${NATS_HTTP_PORT_INPUT:-8222}"
+else
+  NATS_HTTP_PORT="${NATS_HTTP_PORT:-8222}"
+fi
+
+if [[ -z "${NATS_CLUSTER_PORT:-}" ]]; then
+  read -p "Cluster port [6222]: " NATS_CLUSTER_PORT_INPUT
+  NATS_CLUSTER_PORT="${NATS_CLUSTER_PORT_INPUT:-6222}"
+else
+  NATS_CLUSTER_PORT="${NATS_CLUSTER_PORT:-6222}"
+fi
+
+if [[ -z "${DATA_DIR:-}" ]]; then
+  read -p "Data directory [${DEFAULT_DATA_DIR}]: " DATA_DIR_INPUT
+  DATA_DIR="${DATA_DIR_INPUT:-${DEFAULT_DATA_DIR}}"
+else
+  DATA_DIR="${DATA_DIR:-${DEFAULT_DATA_DIR}}"
 fi
 
 # ---------- remove existing container ----------

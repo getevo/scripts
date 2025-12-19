@@ -10,18 +10,36 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
-# Node.js LTS version (22.x as of 2024)
-NODE_MAJOR=22
+# Default Node.js version
+DEFAULT_VERSION=24
+
+# ---------- get version ----------
+NODE_MAJOR="${1:-}"
+
+if [[ -z "${NODE_MAJOR}" ]]; then
+  echo ""
+  echo "Available LTS versions: 18, 20, 22, 24"
+  read -p "Enter Node.js major version [${DEFAULT_VERSION}]: " NODE_MAJOR
+  NODE_MAJOR="${NODE_MAJOR:-${DEFAULT_VERSION}}"
+fi
+
+# Validate version is a number
+if ! [[ "${NODE_MAJOR}" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: Version must be a number (e.g., 18, 20, 22, 24)"
+  exit 1
+fi
+
+log "Installing Node.js version: ${NODE_MAJOR}.x"
 
 # ---------- check if already installed ----------
 if need_cmd node; then
   CURRENT_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
-  if [[ "${CURRENT_VERSION}" -ge "${NODE_MAJOR}" ]]; then
-    log "Node.js ${NODE_MAJOR}+ already installed: $(node -v)"
+  if [[ "${CURRENT_VERSION}" -eq "${NODE_MAJOR}" ]]; then
+    log "Node.js ${NODE_MAJOR} already installed: $(node -v)"
     log "npm: $(npm -v)"
     exit 0
   fi
-  log "Node.js found but version $(node -v) is older than v${NODE_MAJOR}"
+  log "Node.js found: $(node -v), will install v${NODE_MAJOR}"
 fi
 
 # ---------- install prerequisites ----------

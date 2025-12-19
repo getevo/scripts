@@ -11,13 +11,32 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 CONTAINER_NAME="grafana"
-DATA_DIR="/data/grafana"
-GRAFANA_PORT="${GRAFANA_PORT:-3000}"
+DEFAULT_DATA_DIR="/data/grafana"
 
 # ---------- check docker ----------
 if ! need_cmd docker; then
   echo "ERROR: Docker is not installed. Run docker.sh first."
   exit 1
+fi
+
+# ---------- prompt for settings ----------
+echo ""
+echo "Grafana Setup"
+echo "============="
+echo ""
+
+if [[ -z "${GRAFANA_PORT:-}" ]]; then
+  read -p "Port [3000]: " GRAFANA_PORT_INPUT
+  GRAFANA_PORT="${GRAFANA_PORT_INPUT:-3000}"
+else
+  GRAFANA_PORT="${GRAFANA_PORT:-3000}"
+fi
+
+if [[ -z "${DATA_DIR:-}" ]]; then
+  read -p "Data directory [${DEFAULT_DATA_DIR}]: " DATA_DIR_INPUT
+  DATA_DIR="${DATA_DIR_INPUT:-${DEFAULT_DATA_DIR}}"
+else
+  DATA_DIR="${DATA_DIR:-${DEFAULT_DATA_DIR}}"
 fi
 
 # ---------- remove existing container ----------

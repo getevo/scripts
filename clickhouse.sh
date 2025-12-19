@@ -11,7 +11,7 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 CONTAINER_NAME="clickhouse"
-DATA_DIR="/data/clickhouse"
+DEFAULT_DATA_DIR="/data/clickhouse"
 CLICKHOUSE_HTTP_PORT="${CLICKHOUSE_HTTP_PORT:-8123}"
 CLICKHOUSE_NATIVE_PORT="${CLICKHOUSE_NATIVE_PORT:-9000}"
 
@@ -42,6 +42,23 @@ if [[ -z "${CLICKHOUSE_PASSWORD:-}" ]]; then
       fi
     fi
   done
+fi
+
+if [[ -z "${CLICKHOUSE_HTTP_PORT:-}" ]] || [[ "${CLICKHOUSE_HTTP_PORT}" == "8123" ]]; then
+  read -p "HTTP port [8123]: " CLICKHOUSE_HTTP_PORT_INPUT
+  CLICKHOUSE_HTTP_PORT="${CLICKHOUSE_HTTP_PORT_INPUT:-8123}"
+fi
+
+if [[ -z "${CLICKHOUSE_NATIVE_PORT:-}" ]] || [[ "${CLICKHOUSE_NATIVE_PORT}" == "9000" ]]; then
+  read -p "Native port [9000]: " CLICKHOUSE_NATIVE_PORT_INPUT
+  CLICKHOUSE_NATIVE_PORT="${CLICKHOUSE_NATIVE_PORT_INPUT:-9000}"
+fi
+
+if [[ -z "${DATA_DIR:-}" ]]; then
+  read -p "Data directory [${DEFAULT_DATA_DIR}]: " DATA_DIR_INPUT
+  DATA_DIR="${DATA_DIR_INPUT:-${DEFAULT_DATA_DIR}}"
+else
+  DATA_DIR="${DATA_DIR:-${DEFAULT_DATA_DIR}}"
 fi
 
 # ---------- check docker ----------

@@ -19,6 +19,23 @@ TARGET_HOME="$(eval echo "~${TARGET_USER}")"
 
 log "Target user: ${TARGET_USER} (${TARGET_HOME})"
 
+# ---------- get version ----------
+GO_VERSION="${1:-}"
+
+if [[ -z "${GO_VERSION}" ]]; then
+  echo ""
+  LATEST_VERSION=$(curl -fsSL "https://go.dev/VERSION?m=text" | head -1)
+  read -p "Enter Go version [${LATEST_VERSION}]: " GO_VERSION
+  GO_VERSION="${GO_VERSION:-${LATEST_VERSION}}"
+fi
+
+# Ensure version starts with "go"
+if [[ ! "${GO_VERSION}" =~ ^go ]]; then
+  GO_VERSION="go${GO_VERSION}"
+fi
+
+log "Installing Go version: ${GO_VERSION}"
+
 # ---------- install gcc for CGO ----------
 log "Installing gcc (build-essential)..."
 apt-get update -y
@@ -40,11 +57,6 @@ esac
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 log "Detected OS: ${OS}, Architecture: ${GOARCH}"
 
-# ---------- get latest go version ----------
-log "Fetching latest Go version..."
-GO_VERSION=$(curl -fsSL "https://go.dev/VERSION?m=text" | head -1)
-log "Latest Go version: ${GO_VERSION}"
-
 # ---------- remove existing go installation ----------
 if [[ -d "/usr/local/go" ]]; then
   log "Removing existing Go installation from /usr/local/go..."
@@ -63,7 +75,12 @@ fi
 DOWNLOAD_URL="https://go.dev/dl/${GO_VERSION}.${OS}-${GOARCH}.tar.gz"
 log "Downloading Go from ${DOWNLOAD_URL}..."
 
-curl -fsSL "${DOWNLOAD_URL}" -o /tmp/go.tar.gz
+if ! curl -fsSL "${DOWNLOAD_URL}" -o /tmp/go.tar.gz; then
+  echo "ERROR: Failed to download Go ${GO_VERSION}. Check if version exists."
+  echo "Available versions: https://go.dev/dl/"
+  exit 1
+fi
+
 log "Extracting to /usr/local/go..."
 tar -C /usr/local -xzf /tmp/go.tar.gz
 rm /tmp/go.tar.gz
