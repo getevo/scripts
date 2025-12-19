@@ -142,8 +142,7 @@ db_engine = "sqlite"
 
 replication_factor = 1
 
-[rpc]
-bind_addr = "[::]:3901"
+rpc_bind_addr = "[::]:3901"
 rpc_secret = "${RPC_SECRET}"
 
 [s3_api]
